@@ -72,7 +72,30 @@ export interface Workout {
   workout_date: string;
   notes: string | null;
   created_at: string;
+  revision: number;
 }
+
+export type WorkoutExerciseWithData = WorkoutExercise & {
+  exercise: Pick<Exercise, 'id' | 'name' | 'muscle_group'> | null;
+  exercise_sets: ExerciseSet[];
+};
+
+export type WorkoutWithData = Workout & { workout_exercises: WorkoutExerciseWithData[] };
+
+export type SaveWorkoutInput = {
+  id: string | null;
+  draft_key: string;
+  revision: number;
+  name: string;
+  workout_date: string;
+  preset_id: string | null;
+  exercises: {
+    id: string | null;
+    exercise_id: string | null;
+    custom_name: string | null;
+    sets: { id: string | null; reps: number; weight: number; is_dropset: boolean }[];
+  }[];
+};
 
 export interface WorkoutExercise {
   id: string;
@@ -173,7 +196,7 @@ export interface Database {
       };
       workouts: {
         Row: Workout;
-        Insert: Insertable<Workout, 'id' | 'preset_id' | 'notes' | 'created_at'>;
+        Insert: Insertable<Workout, 'id' | 'preset_id' | 'notes' | 'created_at' | 'revision'>;
         Update: Partial<Workout>;
       };
       workout_exercises: {
@@ -214,6 +237,10 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      save_workout: {
+        Args: { p_workout: SaveWorkoutInput; p_save_token: string };
+        Returns: WorkoutWithData;
+      };
       touch_streak: {
         Args: { p_date: string };
         Returns: undefined;

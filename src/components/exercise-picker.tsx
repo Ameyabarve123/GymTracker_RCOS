@@ -12,9 +12,10 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   onSelect: (exercise: Exercise) => void;
+  onCreateDraft?: (name: string) => void;
 };
 
-export function ExercisePicker({ visible, onClose, onSelect }: Props) {
+export function ExercisePicker({ visible, onClose, onSelect, onCreateDraft }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const exercises = useExercises();
@@ -35,6 +36,12 @@ export function ExercisePicker({ visible, onClose, onSelect }: Props) {
   async function handleCreate() {
     const name = query.trim();
     if (!name) return;
+    if (onCreateDraft) {
+      onCreateDraft(name);
+      setQuery('');
+      onClose();
+      return;
+    }
     const created = await createExercise.mutateAsync({ name, muscle_group: 'other' });
     setQuery('');
     onSelect(created);

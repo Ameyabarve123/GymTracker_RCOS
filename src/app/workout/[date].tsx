@@ -1,293 +1,100 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Stack, useLocalSearchParams, usePreventRemove } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Text } from 'react-native';
 
-import { ExercisePicker } from '@/components/exercise-picker';
+import { NewWorkout } from '@/components/new-workout';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Screen } from '@/components/ui/screen';
-import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
+import { WorkoutEditor } from '@/components/workout-editor';
 import { useTheme } from '@/hooks/use-theme';
-import { usePresets } from '@/hooks/use-presets';
-import {
-  useAddSet,
-  useAddWorkoutExercise,
-  useCreateWorkout,
-  useDeleteSet,
-  useDeleteWorkout,
-  useDeleteWorkoutExercise,
-  useUpdateSet,
-  useWorkoutDay,
-  type WorkoutExerciseWithData,
-  type WorkoutWithData,
-} from '@/hooks/use-workouts';
+import { useWorkoutDay } from '@/hooks/use-workouts';
+import { useAuth } from '@/lib/auth';
 import { formatPretty } from '@/lib/date';
-import type { Exercise, ExerciseSet } from '@/types/database';
+import { fromWorkout, type WorkoutDraft } from '@/lib/workout-draft';
 
 export default function WorkoutDayScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
-  const dateKey = date ?? '';
+  const { userId } = useAuth();
+  return <WorkoutDay key={`${userId}:${date}`} dateKey={date ?? ''} signedIn={!!userId} />;
+}
 
+function WorkoutDay({ dateKey, signedIn }: { dateKey: string; signedIn: boolean }) {
+  const theme = useTheme();
   const day = useWorkoutDay(dateKey);
-  const workouts = day.data ?? [];
+  const [newDraft, setNewDraft] = useState<WorkoutDraft | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, { dirty: boolean; busy: boolean }>>({});
+  const [leaving, setLeaving] = useState(false);
+  const [savingOnExit, setSavingOnExit] = useState(false);
+  const [exitError, setExitError] = useState<string | null>(null);
+  const saveHandlers = useRef(new Map<string, () => Promise<boolean>>());
+  const exitPending = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const dirty = !!newDraft || Object.values(statuses).some((status) => status.dirty);
+  const busy = Object.values(statuses).some((status) => status.busy);
+  const onStatus = useCallback((key: string, isDirty: boolean, isBusy: boolean) => {
+    setStatuses((previous) => {
+      if (previous[key]?.dirty === isDirty && previous[key]?.busy === isBusy) return previous;
+      const next = { ...previous };
+      if (isDirty || isBusy) next[key] = { dirty: isDirty, busy: isBusy };
+      else delete next[key];
+      return next;
+    });
+  }, []);
+  const registerSave = useCallback((key: string, save: (() => Promise<boolean>) | null) => {
+    if (save) saveHandlers.current.set(key, save);
+    else saveHandlers.current.delete(key);
+  }, []);
+  const closeNew = useCallback(() => setNewDraft(null), []);
+
+  usePreventRemove(signedIn && !leaving && (dirty || busy || savingOnExit), ({ repeat }) => {
+    if (exitPending.current) return;
+    exitPending.current = true;
+    setSavingOnExit(true);
+    setExitError(null);
+    const handlers = [...saveHandlers.current.values()];
+    void Promise.all(handlers.map((save) => save())).then((results) => {
+      if (handlers.length > 0 && results.every(Boolean)) {
+        setLeaving(true);
+        repeat();
+      } else {
+        setExitError('Your changes could not be saved. Check the workout below, then go back to retry.');
+      }
+    }).catch(() => {
+      setExitError('Your changes could not be saved. Please try going back again.');
+    }).finally(() => {
+      exitPending.current = false;
+      setSavingOnExit(false);
+    });
+  });
+
+  async function refresh() {
+    setRefreshing(true);
+    try { await day.refetch(); } finally { setRefreshing(false); }
+  }
 
   return (
     <>
       <Stack.Screen options={{ title: formatPretty(dateKey) }} />
-      <Screen refreshing={day.isRefetching} onRefresh={() => day.refetch()}>
-        {workouts.length === 0 ? (
-          <CreateWorkout dateKey={dateKey} />
-        ) : (
-          workouts.map((w) => <WorkoutBlock key={w.id} workout={w} dateKey={dateKey} />)
-        )}
+      {/* Keep RefreshControl mounted: removing it remounts Android's scroll subtree. */}
+      <Screen refreshing={refreshing} onRefresh={refresh} refreshEnabled={!dirty && !busy && !savingOnExit}>
+        {savingOnExit ? <Text accessibilityLiveRegion="polite" style={{ color: theme.text }}>Saving your workout before leaving…</Text> : null}
+        {exitError ? <Text accessibilityRole="alert" style={{ color: theme.danger }}>{exitError}</Text> : null}
+        {day.isPending ? <ActivityIndicator accessibilityLabel="Loading workouts" color={theme.tint} /> : null}
+        {day.isError ? <>
+          <Text style={{ color: theme.danger }}>Could not load saved workouts. Your edits have been kept.</Text>
+          {!dirty && !busy ? <Button title="Retry" onPress={refresh} /> : null}
+        </> : null}
+        {(day.data ?? []).map((workout) => (
+          <WorkoutEditor key={workout.id} initial={fromWorkout(workout)} workout={workout}
+            onStatus={onStatus} onCloseNew={closeNew} onReload={refresh} registerSave={registerSave} savingOnExit={savingOnExit} />
+        ))}
+        {newDraft ? (
+          <WorkoutEditor key={newDraft.key} initial={newDraft} onStatus={onStatus} onCloseNew={closeNew} onReload={refresh}
+            registerSave={registerSave} savingOnExit={savingOnExit} />
+        ) : day.isSuccess && day.data.length === 0 ? (
+          <NewWorkout dateKey={dateKey} onCreate={setNewDraft} />
+        ) : null}
       </Screen>
     </>
   );
 }
-
-function CreateWorkout({ dateKey }: { dateKey: string }) {
-  const theme = useTheme();
-  const createWorkout = useCreateWorkout(dateKey);
-  const presets = usePresets();
-  const [name, setName] = useState('');
-
-  async function create(presetId: string | null, fallbackName: string) {
-    const workoutName = name.trim() || fallbackName;
-    await createWorkout.mutateAsync({ name: workoutName, presetId });
-  }
-
-  return (
-    <>
-      <Text style={[styles.sectionTitle, { color: theme.text }]}>New workout</Text>
-      <TextField
-        label="Workout name"
-        placeholder="e.g. Push Day"
-        value={name}
-        onChangeText={setName}
-      />
-      <Button
-        title="Start empty workout"
-        loading={createWorkout.isPending}
-        onPress={() => create(null, 'Workout')}
-      />
-
-      {(presets.data ?? []).length > 0 ? (
-        <View style={{ gap: Spacing.two }}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Start from a preset</Text>
-          {(presets.data ?? []).map((preset) => (
-            <Pressable key={preset.id} onPress={() => create(preset.id, preset.name)}>
-              <Card style={styles.presetRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.presetName, { color: theme.text }]}>{preset.name}</Text>
-                  <Text style={[styles.presetMeta, { color: theme.textSecondary }]}>
-                    {preset.preset_exercises.length} exercises
-                  </Text>
-                </View>
-                <Ionicons name="play-circle" size={24} color={theme.tint} />
-              </Card>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-    </>
-  );
-}
-
-function WorkoutBlock({ workout, dateKey }: { workout: WorkoutWithData; dateKey: string }) {
-  const theme = useTheme();
-  const addExercise = useAddWorkoutExercise(dateKey);
-  const deleteWorkout = useDeleteWorkout(dateKey);
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  function handleSelectExercise(exercise: Exercise) {
-    addExercise.mutate({
-      workoutId: workout.id,
-      exerciseId: exercise.id,
-      orderIndex: workout.workout_exercises.length,
-    });
-  }
-
-  function confirmDeleteWorkout() {
-    Alert.alert('Delete workout', `Delete "${workout.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteWorkout.mutate(workout.id) },
-    ]);
-  }
-
-  return (
-    <View style={{ gap: Spacing.three }}>
-      <View style={styles.workoutHeader}>
-        <Text style={[styles.workoutName, { color: theme.text }]}>{workout.name}</Text>
-        <Pressable hitSlop={10} onPress={confirmDeleteWorkout}>
-          <Ionicons name="trash-outline" size={20} color={theme.danger} />
-        </Pressable>
-      </View>
-
-      {workout.workout_exercises.length === 0 ? (
-        <Card>
-          <Text style={{ color: theme.textSecondary }}>
-            No exercises yet. Add one to start logging sets.
-          </Text>
-        </Card>
-      ) : (
-        workout.workout_exercises.map((we) => (
-          <ExerciseBlock key={we.id} workoutExercise={we} dateKey={dateKey} />
-        ))
-      )}
-
-      <Button
-        title="Add Exercise"
-        variant="secondary"
-        onPress={() => setPickerOpen(true)}
-      />
-
-      <ExercisePicker
-        visible={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onSelect={handleSelectExercise}
-      />
-    </View>
-  );
-}
-
-function ExerciseBlock({
-  workoutExercise,
-  dateKey,
-}: {
-  workoutExercise: WorkoutExerciseWithData;
-  dateKey: string;
-}) {
-  const theme = useTheme();
-  const addSet = useAddSet(dateKey);
-  const deleteExercise = useDeleteWorkoutExercise(dateKey);
-
-  const sets = workoutExercise.exercise_sets;
-
-  function handleAddSet() {
-    const last = sets[sets.length - 1];
-    addSet.mutate({
-      workoutExerciseId: workoutExercise.id,
-      setNumber: sets.length + 1,
-      reps: last?.reps ?? 0,
-      weight: last?.weight ?? 0,
-    });
-  }
-
-  return (
-    <Card>
-      <View style={styles.exerciseHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.exerciseName, { color: theme.text }]}>
-            {workoutExercise.exercise?.name ?? 'Exercise'}
-          </Text>
-          <Text style={[styles.exerciseMeta, { color: theme.textSecondary }]}>
-            {workoutExercise.exercise?.muscle_group}
-          </Text>
-        </View>
-        <Pressable hitSlop={10} onPress={() => deleteExercise.mutate(workoutExercise.id)}>
-          <Ionicons name="close-circle-outline" size={22} color={theme.textSecondary} />
-        </Pressable>
-      </View>
-
-      <View style={styles.setsHeaderRow}>
-        <Text style={[styles.setsHeaderCell, styles.setCol, { color: theme.textSecondary }]}>Set</Text>
-        <Text style={[styles.setsHeaderCell, styles.inputCol, { color: theme.textSecondary }]}>Reps</Text>
-        <Text style={[styles.setsHeaderCell, styles.inputCol, { color: theme.textSecondary }]}>Weight</Text>
-        <Text style={[styles.setsHeaderCell, styles.dropCol, { color: theme.textSecondary }]}>Drop</Text>
-        <View style={styles.delCol} />
-      </View>
-
-      {sets.map((set, i) => (
-        <SetRow key={set.id} set={set} index={i} dateKey={dateKey} />
-      ))}
-
-      <Pressable style={styles.addSetBtn} onPress={handleAddSet}>
-        <Ionicons name="add" size={18} color={theme.tint} />
-        <Text style={[styles.addSetText, { color: theme.tint }]}>Add set</Text>
-      </Pressable>
-    </Card>
-  );
-}
-
-function SetRow({ set, index, dateKey }: { set: ExerciseSet; index: number; dateKey: string }) {
-  const theme = useTheme();
-  const updateSet = useUpdateSet(dateKey);
-  const deleteSet = useDeleteSet(dateKey);
-  const [reps, setReps] = useState(String(set.reps));
-  const [weight, setWeight] = useState(String(set.weight));
-
-  const inputStyle = [
-    styles.setInput,
-    { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.border },
-  ];
-
-  return (
-    <View style={styles.setRow}>
-      <Text style={[styles.setCol, styles.setNumber, { color: theme.text }]}>{index + 1}</Text>
-      <View style={styles.inputCol}>
-        <TextInput
-          style={inputStyle}
-          keyboardType="numeric"
-          value={reps}
-          onChangeText={setReps}
-          onEndEditing={() => updateSet.mutate({ id: set.id, patch: { reps: Number(reps) || 0 } })}
-        />
-      </View>
-      <View style={styles.inputCol}>
-        <TextInput
-          style={inputStyle}
-          keyboardType="numeric"
-          value={weight}
-          onChangeText={setWeight}
-          onEndEditing={() =>
-            updateSet.mutate({ id: set.id, patch: { weight: Number(weight) || 0 } })
-          }
-        />
-      </View>
-      <Pressable
-        style={styles.dropCol}
-        onPress={() => updateSet.mutate({ id: set.id, patch: { is_dropset: !set.is_dropset } })}>
-        <Ionicons
-          name={set.is_dropset ? 'checkbox' : 'square-outline'}
-          size={20}
-          color={set.is_dropset ? theme.fats : theme.textSecondary}
-        />
-      </Pressable>
-      <Pressable style={styles.delCol} hitSlop={8} onPress={() => deleteSet.mutate(set.id)}>
-        <Ionicons name="remove-circle-outline" size={20} color={theme.danger} />
-      </Pressable>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 18, fontWeight: '700' },
-  presetRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  presetName: { fontSize: 16, fontWeight: '700' },
-  presetMeta: { fontSize: 13 },
-  workoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  workoutName: { fontSize: 24, fontWeight: '800' },
-  exerciseHeader: { flexDirection: 'row', alignItems: 'center' },
-  exerciseName: { fontSize: 17, fontWeight: '700' },
-  exerciseMeta: { fontSize: 12, textTransform: 'capitalize' },
-  setsHeaderRow: { flexDirection: 'row', alignItems: 'center', marginTop: Spacing.two },
-  setsHeaderCell: { fontSize: 12, fontWeight: '600' },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginTop: Spacing.two },
-  setCol: { width: 32, textAlign: 'center' },
-  setNumber: { fontSize: 15, fontWeight: '700' },
-  inputCol: { flex: 1 },
-  dropCol: { width: 44, alignItems: 'center' },
-  delCol: { width: 32, alignItems: 'center' },
-  setInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.two,
-    fontSize: 15,
-    textAlign: 'center',
-  },
-  addSetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.two, alignSelf: 'flex-start' },
-  addSetText: { fontSize: 14, fontWeight: '700' },
-});

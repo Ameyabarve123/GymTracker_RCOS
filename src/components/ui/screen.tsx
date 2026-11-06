@@ -9,6 +9,7 @@ type Props = PropsWithChildren<{
   scroll?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  refreshEnabled?: boolean;
   contentStyle?: ViewStyle;
   edges?: boolean;
 }>;
@@ -18,6 +19,7 @@ export function Screen({
   scroll = true,
   refreshing,
   onRefresh,
+  refreshEnabled = true,
   contentStyle,
   edges = true,
 }: Props) {
@@ -45,7 +47,12 @@ export function Screen({
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? (
-          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={theme.tint} />
+          <RefreshControl
+            refreshing={!!refreshing}
+            enabled={refreshEnabled}
+            onRefresh={() => { if (refreshEnabled) onRefresh(); }}
+            tintColor={theme.tint}
+          />
         ) : undefined
       }>
       {children}

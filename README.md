@@ -32,6 +32,7 @@ Deferred for a later phase: social features (friends, groups, public profiles) a
    - `0001_core.sql` - core tables, RLS, streak function, profile trigger
    - `0002_social.sql` - social tables (not used by the UI yet)
    - `0003_seed_exercises.sql` - a library of common exercises
+   - `0004_workout_drafts.sql` - atomic workout saves, retry protection, and revision checks (**required before running the updated workout screen**)
 
 3. Configure environment variables. Copy `.env.example` to `.env` and fill in your project values (Supabase dashboard -> Project Settings -> API):
 
@@ -76,3 +77,39 @@ supabase/migrations/       # SQL you run in Supabase
 - Data access uses `@tanstack/react-query` for caching and refetching.
 - Streaks are updated server-side via the `touch_streak` RPC whenever you log a meal or create a workout.
 - Row Level Security is enabled on every table so users only see their own data.
+
+## Workout editing and verification
+
+Workouts, preset copies, custom exercises, and sets are edited in a local draft. Reps,
+weight, dropsets, additions, and removals stay local while editing. Going back from the
+workout screen automatically saves changes before navigating away. **Save Workout**
+also lets you save without leaving. Saving writes the entire workout in one transaction
+and updates the query cache with the response. Failed saves keep you on the screen
+with your draft intact; correct any invalid fields or restore the connection, then go
+back again to retry. Pull-to-refresh stays mounted but is disabled while editing so
+Android does not remount the editor and lose its state.
+Deleting a previously saved workout is a separate, confirmed action.
+
+Drafts currently live in memory while the screen is open. They do not survive a forced
+app close or browser reload. Persistent draft recovery is a future enhancement.
+Save requires a network connection. A stale revision is rejected; use **Discard changes**
+to reload the saved version before editing again.
+
+Apply `0004_workout_drafts.sql` to an existing Supabase project using its SQL editor
+before deploying the app update. The migration retains existing workout data. The app
+does not fall back to partial writes if the function is missing.
+
+Run verification (Node.js 22.18+ or 24+, for built-in TypeScript stripping in tests):
+
+```bash
+npm run test:workouts
+npx tsc --noEmit
+npx expo lint
+```
+
+The workout tests exercise Add Set and save-on-back with a simulated Android scroll
+hierarchy, and run the migration and existing ownership policies in an isolated
+in-memory PostgreSQL engine (PGlite); they never connect to the configured Supabase
+project. On devices, check adding/removing exercises and sets without a refresh,
+saving on Back with the keyboard still open, failed-save retry, discard/back navigation,
+and preset/custom-exercise creation on Android, iOS, and web.
