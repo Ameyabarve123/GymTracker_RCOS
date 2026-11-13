@@ -62,13 +62,18 @@ const mocks = {
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
   '@expo/vector-icons': { Ionicons: 'Icon' },
   'expo-router': { Stack: { Screen: () => null }, useLocalSearchParams: () => ({ date: '2026-11-06' }),
+    useRouter: () => ({ back: () => {} }),
     usePreventRemove: (enabled, callback) => { React.useLayoutEffect(() => { guard = { enabled, callback }; }); },
   },
-  '@/constants/theme': { Spacing: { two: 8, three: 12, four: 16, six: 24 }, MaxContentWidth: 600 },
+  '@/constants/theme': { Spacing: { two: 8, three: 12, four: 16, six: 24 }, MaxContentWidth: 600, TabBarSpace: 112,
+    Radius: { sm: 12, md: 16, lg: 24, xl: 36, pill: 999 },
+    Font: { regular: 'r', medium: 'm', semibold: 's', bold: 'b', extrabold: 'x' },
+  },
+  'expo-linear-gradient': { LinearGradient: 'LinearGradient' },
   '@/hooks/use-theme': { useTheme: () => theme },
   '@/hooks/use-presets': { usePresets: () => ({ data: [] }) },
   '@/lib/auth': { useAuth: () => ({ userId: 'user' }) },
-  '@/lib/date': { formatPretty: (date) => date },
+  '@/lib/date': { formatPretty: (date) => date, formatDayMonthYear: (date) => date },
   '@/components/exercise-picker': { ExercisePicker: (props) => React.createElement('ExercisePicker', props) },
   '@/hooks/use-workouts': { useWorkoutDay: () => React.useSyncExternalStore(subscribe, snapshot), useSaveWorkout,
     useDeleteWorkout: () => ({ isPending: false, mutateAsync: async () => {} }),
@@ -186,6 +191,24 @@ test('Back during a manual save waits for the existing request', async () => {
   assert.equal(navigations, 0);
   await act(async () => resolveSave());
   assert.equal(navigations, 1);
+});
+
+test('dropsets render nested under their set, have no add-dropset control, and save in order', async () => {
+  await mount();
+  await act(async () => presses('Add set')[0].props.onPress());
+  const addDrop = (n) => renderer.root.findByProps({ accessibilityLabel: `Add dropset to set ${n}` }).props.onPress();
+  await act(async () => addDrop(1));
+  await act(async () => addDrop(1));
+  await act(async () => input('Set 1 drop 2 weight').props.onChangeText('20'));
+  assert.equal(input('Set 1 drop 1 reps').props.value, '8');
+  assert.equal(input('Set 2 reps').props.value, '8');
+  // Only top-level sets offer "Add dropset", so a dropset can never get its own dropset.
+  assert.equal(renderer.root.findAllByProps({ accessibilityLabel: 'Add dropset to set 3' }).length, 0);
+  assert.equal(renderer.root.findAll((node) => typeof node.props.accessibilityLabel === 'string'
+    && /drop \d+ .*dropset/i.test(node.props.accessibilityLabel)).length, 0);
+  await back();
+  assert.deepEqual(writes[0].p_workout.exercises[0].sets.map((s) => s.is_dropset), [false, true, true, false]);
+  assert.equal(writes[0].p_workout.exercises[0].sets[2].weight, 20);
 });
 
 test('clean workouts do not block navigation or write to the database', async () => {

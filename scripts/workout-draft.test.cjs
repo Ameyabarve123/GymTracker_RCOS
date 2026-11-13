@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { draftExercise, newWorkout, editDraft, fromWorkout, serializeDraft, draftIsDirty } = require('../src/lib/workout-draft.ts');
+const { draftExercise, newWorkout, editDraft, fromWorkout, serializeDraft, draftIsDirty, groupSets } = require('../src/lib/workout-draft.ts');
 
 function draftWithSet() {
   let draft = newWorkout('2026-11-06', 'Push');
@@ -71,4 +71,52 @@ test('editing one exercise preserves other object references for memoized rows',
   const untouched = draft.exercises[1];
   const changed = editDraft(draft, { type: 'update-set', exerciseKey: draft.exercises[0].key, key: 'set-one', patch: { reps: '8' } });
   assert.equal(changed.exercises[1], untouched);
+});
+
+function shape(draft) {
+  return groupSets(draft.exercises[0].sets).map((g) => [g.parent.key, ...g.drops.map((d) => d.key)]);
+}
+
+test('dropsets nest under the top-level set, even when added from a dropset', () => {
+  let draft = draftWithSet();
+  const exerciseKey = draft.exercises[0].key;
+  draft = editDraft(draft, { type: 'update-set', exerciseKey, key: 'set-one', patch: { reps: '8', weight: '100' } });
+  draft = editDraft(draft, { type: 'add-set', exerciseKey, key: 'set-two' });
+  draft = editDraft(draft, { type: 'add-dropset', exerciseKey, setKey: 'set-one', key: 'drop-a' });
+  // Asking a dropset for a dropset still attaches the new one to the parent set, after its siblings.
+  draft = editDraft(draft, { type: 'add-dropset', exerciseKey, setKey: 'drop-a', key: 'drop-b' });
+  assert.deepEqual(shape(draft), [['set-one', 'drop-a', 'drop-b'], ['set-two']]);
+  assert.deepEqual(draft.exercises[0].sets.map((s) => s.is_dropset), [false, true, true, false]);
+  assert.equal(draft.exercises[0].sets[1].weight, '100');
+});
+
+test('new top-level sets copy the last top-level set, not a lighter dropset', () => {
+  let draft = draftWithSet();
+  const exerciseKey = draft.exercises[0].key;
+  draft = editDraft(draft, { type: 'update-set', exerciseKey, key: 'set-one', patch: { weight: '100' } });
+  draft = editDraft(draft, { type: 'add-dropset', exerciseKey, setKey: 'set-one', key: 'drop-a' });
+  draft = editDraft(draft, { type: 'update-set', exerciseKey, key: 'drop-a', patch: { weight: '60' } });
+  draft = editDraft(draft, { type: 'add-set', exerciseKey, key: 'set-two' });
+  assert.equal(draft.exercises[0].sets[2].weight, '100');
+  assert.equal(draft.exercises[0].sets[2].is_dropset, false);
+});
+
+test('removing a set removes its dropsets; removing a dropset keeps its set', () => {
+  let draft = draftWithSet();
+  const exerciseKey = draft.exercises[0].key;
+  draft = editDraft(draft, { type: 'add-dropset', exerciseKey, setKey: 'set-one', key: 'drop-a' });
+  draft = editDraft(draft, { type: 'add-set', exerciseKey, key: 'set-two' });
+  draft = editDraft(draft, { type: 'add-dropset', exerciseKey, setKey: 'set-two', key: 'drop-b' });
+  draft = editDraft(draft, { type: 'remove-set', exerciseKey, key: 'drop-b' });
+  assert.deepEqual(shape(draft), [['set-one', 'drop-a'], ['set-two']]);
+  draft = editDraft(draft, { type: 'remove-set', exerciseKey, key: 'set-one' });
+  assert.deepEqual(shape(draft), [['set-two']]);
+});
+
+test('validation errors name dropsets the way the screen does', () => {
+  let draft = draftWithSet();
+  const exerciseKey = draft.exercises[0].key;
+  draft = editDraft(draft, { type: 'add-dropset', exerciseKey, setKey: 'set-one', key: 'drop-a' });
+  draft = editDraft(draft, { type: 'update-set', exerciseKey, key: 'drop-a', patch: { reps: '' } });
+  assert.throws(() => serializeDraft(draft), /Bench press, set 1, drop 1:/);
 });

@@ -53,6 +53,12 @@ export function formatPretty(dateKey: string): string {
   return format(new Date(y, m - 1, d), 'EEE, MMM d');
 }
 
+/** Header label for a date key, e.g. "13 Nov 2026". */
+export function formatDayMonthYear(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return format(new Date(y, m - 1, d), 'd MMM yyyy');
+}
+
 export function formatMonthYear(date: Date): string {
   return format(date, 'MMMM yyyy');
 }

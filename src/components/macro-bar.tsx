@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Spacing } from '@/constants/theme';
+import { Font, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
@@ -9,26 +9,28 @@ type Props = {
   goal: number;
   color: string;
   unit?: string;
+  /** Draw on a black panel instead of a white card. */
+  inverse?: boolean;
 };
 
-export function MacroBar({ label, value, goal, color, unit = 'g' }: Props) {
+/** "Protein  112 / 160 g" with a slim progress bar, styled for the black macro panel. */
+export function MacroBar({ label, value, goal, color, unit = 'g', inverse = false }: Props) {
   const theme = useTheme();
   const pct = goal > 0 ? Math.min(value / goal, 1) : 0;
+  const strong = inverse ? theme.onInverse : theme.text;
+  const muted = inverse ? theme.onInverseSecondary : theme.textSecondary;
 
   return (
-    <View style={styles.row}>
-      <View style={styles.header}>
-        <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-        <Text style={[styles.value, { color: theme.textSecondary }]}>
-          {Math.round(value)}
-          <Text style={{ color: theme.textSecondary }}>
-            {' / '}
-            {goal}
-            {unit}
-          </Text>
-        </Text>
-      </View>
-      <View style={[styles.track, { backgroundColor: theme.backgroundElement }]}>
+    <View
+      style={styles.block}
+      accessible
+      accessibilityLabel={`${label}: ${Math.round(value)} of ${goal}${unit ? ` ${unit}` : ''}`}>
+      <Text style={[styles.label, { color: muted }]}>{label}</Text>
+      <Text style={[styles.value, { color: strong }]}>
+        {Math.round(value).toLocaleString()}
+        <Text style={[styles.goal, { color: muted }]}>{` / ${goal.toLocaleString()}${unit ? ` ${unit}` : ''}`}</Text>
+      </Text>
+      <View style={[styles.track, { backgroundColor: inverse ? theme.inverseTrack : theme.backgroundElement }]}>
         <View style={[styles.fill, { width: `${pct * 100}%`, backgroundColor: color }]} />
       </View>
     </View>
@@ -36,10 +38,10 @@ export function MacroBar({ label, value, goal, color, unit = 'g' }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { gap: Spacing.one + 2, alignSelf: 'stretch' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  label: { fontSize: 14, fontWeight: '600' },
-  value: { fontSize: 13, fontWeight: '600' },
-  track: { height: 10, borderRadius: 6, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 6 },
+  block: { gap: 2, flex: 1, minWidth: 0 },
+  label: { fontSize: 13, fontFamily: Font.medium },
+  value: { fontSize: 22, fontFamily: Font.medium, letterSpacing: -0.5 },
+  goal: { fontSize: 13, fontFamily: Font.medium, letterSpacing: 0 },
+  track: { height: 6, borderRadius: 3, overflow: 'hidden', marginTop: Spacing.one + 2 },
+  fill: { height: '100%', borderRadius: 3 },
 });

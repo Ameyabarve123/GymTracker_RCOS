@@ -1,15 +1,17 @@
-import { Stack, useLocalSearchParams, usePreventRemove } from 'expo-router';
+import { useLocalSearchParams, usePreventRemove, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Text } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { NewWorkout } from '@/components/new-workout';
 import { Button } from '@/components/ui/button';
+import { Chip, ChipRow, CircleButton, GradientHeader } from '@/components/ui/gradient-header';
 import { Screen } from '@/components/ui/screen';
 import { WorkoutEditor } from '@/components/workout-editor';
+import { Font, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useWorkoutDay } from '@/hooks/use-workouts';
 import { useAuth } from '@/lib/auth';
-import { formatPretty } from '@/lib/date';
+import { formatDayMonthYear } from '@/lib/date';
 import { fromWorkout, type WorkoutDraft } from '@/lib/workout-draft';
 
 export default function WorkoutDayScreen() {
@@ -20,6 +22,7 @@ export default function WorkoutDayScreen() {
 
 function WorkoutDay({ dateKey, signedIn }: { dateKey: string; signedIn: boolean }) {
   const theme = useTheme();
+  const router = useRouter();
   const day = useWorkoutDay(dateKey);
   const [newDraft, setNewDraft] = useState<WorkoutDraft | null>(null);
   const [statuses, setStatuses] = useState<Record<string, { dirty: boolean; busy: boolean }>>({});
@@ -72,16 +75,35 @@ function WorkoutDay({ dateKey, signedIn }: { dateKey: string; signedIn: boolean 
     try { await day.refetch(); } finally { setRefreshing(false); }
   }
 
+  const count = day.data?.length ?? 0;
+  const status = savingOnExit || busy
+    ? { label: 'Saving…', tone: theme.textSecondary }
+    : dirty ? { label: 'Unsaved', tone: theme.warning } : count > 0 ? { label: 'Saved', tone: theme.success } : null;
+
+  const header = (
+    <GradientHeader
+      title="Workout Details"
+      subtitle={formatDayMonthYear(dateKey)}
+      left={<CircleButton icon="arrow-back" accessibilityLabel={dirty ? 'Back (saves changes)' : 'Back'} onPress={() => router.back()} />}
+      right={<View />}>
+      {count > 0 || status ? (
+        <ChipRow>
+          {count > 0 ? <Chip>{`${count} workout${count === 1 ? '' : 's'}`}</Chip> : null}
+          {status ? <Chip tone={status.tone}>{status.label}</Chip> : null}
+        </ChipRow>
+      ) : null}
+    </GradientHeader>
+  );
+
   return (
     <>
-      <Stack.Screen options={{ title: formatPretty(dateKey) }} />
       {/* Keep RefreshControl mounted: removing it remounts Android's scroll subtree. */}
-      <Screen refreshing={refreshing} onRefresh={refresh} refreshEnabled={!dirty && !busy && !savingOnExit}>
-        {savingOnExit ? <Text accessibilityLiveRegion="polite" style={{ color: theme.text }}>Saving your workout before leaving…</Text> : null}
-        {exitError ? <Text accessibilityRole="alert" style={{ color: theme.danger }}>{exitError}</Text> : null}
-        {day.isPending ? <ActivityIndicator accessibilityLabel="Loading workouts" color={theme.tint} /> : null}
+      <Screen header={header} refreshing={refreshing} onRefresh={refresh} refreshEnabled={!dirty && !busy && !savingOnExit}>
+        {savingOnExit ? <Text accessibilityLiveRegion="polite" style={[styles.note, { color: theme.text }]}>Saving your workout before leaving…</Text> : null}
+        {exitError ? <Text accessibilityRole="alert" style={[styles.note, { color: theme.danger }]}>{exitError}</Text> : null}
+        {day.isPending ? <ActivityIndicator accessibilityLabel="Loading workouts" color={theme.text} /> : null}
         {day.isError ? <>
-          <Text style={{ color: theme.danger }}>Could not load saved workouts. Your edits have been kept.</Text>
+          <Text style={[styles.note, { color: theme.danger }]}>Could not load saved workouts. Your edits have been kept.</Text>
           {!dirty && !busy ? <Button title="Retry" onPress={refresh} /> : null}
         </> : null}
         {(day.data ?? []).map((workout) => (
@@ -98,3 +120,7 @@ function WorkoutDay({ dateKey, signedIn }: { dateKey: string; signedIn: boolean 
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  note: { fontFamily: Font.semibold, paddingHorizontal: Spacing.two },
+});

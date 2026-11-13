@@ -1,8 +1,8 @@
-import type { PropsWithChildren } from 'react';
+import type { PropsWithChildren, ReactNode } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TabBarSpace } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = PropsWithChildren<{
@@ -11,6 +11,11 @@ type Props = PropsWithChildren<{
   onRefresh?: () => void;
   refreshEnabled?: boolean;
   contentStyle?: ViewStyle;
+  /** Full-bleed header (usually a GradientHeader) drawn above the padded content. */
+  header?: ReactNode;
+  /** Leave room for the floating tab bar. */
+  tabBar?: boolean;
+  /** Pad for the top safe area when there is no header. */
   edges?: boolean;
 }>;
 
@@ -21,20 +26,23 @@ export function Screen({
   onRefresh,
   refreshEnabled = true,
   contentStyle,
+  header,
+  tabBar = false,
   edges = true,
 }: Props) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
   const padding: ViewStyle = {
-    paddingTop: edges ? insets.top + Spacing.two : Spacing.three,
-    paddingBottom: Spacing.six,
-    paddingHorizontal: Spacing.three,
+    paddingTop: header ? Spacing.two : edges ? insets.top + Spacing.two : Spacing.three,
+    paddingBottom: tabBar ? TabBarSpace + insets.bottom : Spacing.six,
+    paddingHorizontal: Spacing.two,
   };
 
   if (!scroll) {
     return (
       <View style={[styles.flex, { backgroundColor: theme.background }]}>
+        {header}
         <View style={[styles.inner, padding, contentStyle]}>{children}</View>
       </View>
     );
@@ -43,7 +51,7 @@ export function Screen({
   return (
     <ScrollView
       style={{ backgroundColor: theme.background }}
-      contentContainerStyle={[styles.inner, padding, contentStyle]}
+      contentContainerStyle={styles.grow}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? (
@@ -51,21 +59,23 @@ export function Screen({
             refreshing={!!refreshing}
             enabled={refreshEnabled}
             onRefresh={() => { if (refreshEnabled) onRefresh(); }}
-            tintColor={theme.tint}
+            tintColor={theme.text}
           />
         ) : undefined
       }>
-      {children}
+      {header}
+      <View style={[styles.inner, padding, contentStyle]}>{children}</View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  grow: { flexGrow: 1 },
   inner: {
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    gap: Spacing.three,
+    gap: Spacing.two,
   },
 });

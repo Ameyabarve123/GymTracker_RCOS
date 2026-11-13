@@ -56,8 +56,41 @@ export type DraftAction =
   | { type: 'add-exercise'; exercise: DraftExercise }
   | { type: 'remove-exercise'; key: string }
   | { type: 'add-set'; exerciseKey: string; key: string }
+  /** Adds a dropset under the top-level set that owns `setKey` (a dropset never nests under a dropset). */
+  | { type: 'add-dropset'; exerciseKey: string; setKey: string; key: string }
   | { type: 'remove-set'; exerciseKey: string; key: string }
   | { type: 'update-set'; exerciseKey: string; key: string; patch: Partial<Pick<DraftSet, 'reps' | 'weight' | 'is_dropset'>> };
+
+/**
+ * A top-level set with the dropsets nested beneath it. Sets are stored as one ordered list;
+ * every dropset belongs to the nearest non-dropset set before it.
+ */
+export type SetGroup = { parent: DraftSet; number: number; drops: DraftSet[] };
+
+export function groupSets(sets: DraftSet[]): SetGroup[] {
+  const groups: SetGroup[] = [];
+  for (const set of sets) {
+    const owner = groups[groups.length - 1];
+    // A leading dropset has no parent, so it is shown as its own top-level set.
+    if (set.is_dropset && owner) owner.drops.push(set);
+    else groups.push({ parent: set, number: groups.length + 1, drops: [] });
+  }
+  return groups;
+}
+
+/** Index just past the group (parent plus its dropsets) that contains `index`. */
+function groupEnd(sets: DraftSet[], index: number) {
+  let end = index + 1;
+  while (end < sets.length && sets[end].is_dropset) end++;
+  return end;
+}
+
+/** Index of the top-level set that owns `index`. */
+function groupStart(sets: DraftSet[], index: number) {
+  let start = index;
+  while (start > 0 && sets[start].is_dropset) start--;
+  return start;
+}
 
 export function editDraft(draft: WorkoutDraft, action: DraftAction): WorkoutDraft {
   if (action.type === 'name') return { ...draft, name: action.name };
@@ -69,10 +102,23 @@ export function editDraft(draft: WorkoutDraft, action: DraftAction): WorkoutDraf
       if (exercise.key !== action.exerciseKey) return exercise;
       let sets = exercise.sets;
       if (action.type === 'add-set') {
-        const last = sets[sets.length - 1];
+        // Copy the last top-level set so a new set doesn't inherit a dropset's lighter weight.
+        const last = [...sets].reverse().find((set) => !set.is_dropset) ?? sets[sets.length - 1];
         sets = [...sets, { key: action.key, id: null, reps: last?.reps ?? '0', weight: last?.weight ?? '0', is_dropset: false }];
+      } else if (action.type === 'add-dropset') {
+        const index = sets.findIndex((set) => set.key === action.setKey);
+        if (index === -1) return exercise;
+        const end = groupEnd(sets, groupStart(sets, index));
+        const previous = sets[end - 1];
+        const drop: DraftSet = { key: action.key, id: null, reps: previous.reps, weight: previous.weight, is_dropset: true };
+        sets = [...sets.slice(0, end), drop, ...sets.slice(end)];
       } else if (action.type === 'remove-set') {
-        sets = sets.filter((set) => set.key !== action.key);
+        const index = sets.findIndex((set) => set.key === action.key);
+        if (index === -1) return exercise;
+        // Removing a top-level set also removes its dropsets, so they never re-attach to another set.
+        const isParent = groupStart(sets, index) === index;
+        const end = isParent ? groupEnd(sets, index) : index + 1;
+        sets = [...sets.slice(0, index), ...sets.slice(end)];
       } else {
         sets = sets.map((set) => set.key === action.key ? { ...set, ...action.patch } : set);
       }
@@ -86,13 +132,20 @@ export function serializeDraft(draft: WorkoutDraft): SaveWorkoutInput {
   return {
     id: draft.id, draft_key: draft.key, revision: draft.revision, name: draft.name.trim(),
     workout_date: draft.workout_date, preset_id: draft.preset_id,
-    exercises: draft.exercises.map((exercise) => ({
+    exercises: draft.exercises.map((exercise) => {
+      // Name sets the way the screen shows them: "set 2" or "set 2, drop 1".
+      const labels = new Map<string, string>();
+      for (const group of groupSets(exercise.sets)) {
+        labels.set(group.parent.key, `set ${group.number}`);
+        group.drops.forEach((drop, i) => labels.set(drop.key, `set ${group.number}, drop ${i + 1}`));
+      }
+      return {
       id: exercise.id, exercise_id: exercise.exercise_id,
       custom_name: exercise.exercise_id ? null : exercise.name.trim(),
-      sets: exercise.sets.map((set, index) => {
+      sets: exercise.sets.map((set) => {
         const reps = Number(set.reps);
         const weight = Number(set.weight.replace(',', '.'));
-        const label = `${exercise.name}, set ${index + 1}`;
+        const label = `${exercise.name}, ${labels.get(set.key)}`;
         if (!/^\d+$/.test(set.reps.trim()) || !Number.isInteger(reps) || reps > 2147483647) {
           throw new Error(`${label}: enter a whole number of reps (0 or more).`);
         }
@@ -101,7 +154,8 @@ export function serializeDraft(draft: WorkoutDraft): SaveWorkoutInput {
         }
         return { id: set.id, reps, weight, is_dropset: set.is_dropset };
       }),
-    })),
+      };
+    }),
   };
 }
 

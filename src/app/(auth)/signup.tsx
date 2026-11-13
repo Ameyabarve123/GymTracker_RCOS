@@ -1,16 +1,13 @@
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert } from 'react-native';
 
+import { AuthShell } from '@/components/auth-shell';
 import { Button } from '@/components/ui/button';
-import { Screen } from '@/components/ui/screen';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth';
 
 export default function SignupScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const { signUp } = useAuth();
   const [username, setUsername] = useState('');
@@ -46,61 +43,40 @@ export default function SignupScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen contentStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={[styles.logo, { color: theme.tint }]}>Create account</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            Track your lifts, meals, and streaks.
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <TextField
-            label="Username"
-            placeholder="gymrat99"
-            autoCapitalize="none"
-            value={username}
-            onChangeText={setUsername}
-          />
-          <TextField
-            label="Email"
-            placeholder="you@example.com"
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextField
-            label="Password"
-            placeholder="At least 6 characters"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          <Button title="Sign Up" loading={loading} onPress={handleSignup} />
-        </View>
-
-        <View style={styles.footer}>
-          <Text style={{ color: theme.textSecondary }}>Already have an account? </Text>
-          <Link href="/login" style={{ color: theme.tint, fontWeight: '700' }}>
-            Log in
-          </Link>
-        </View>
-      </Screen>
-    </KeyboardAvoidingView>
+    <AuthShell
+      mode="signup"
+      headline={'Start your\nstreak today.'}
+      tagline="Track your lifts, meals, and streaks."
+      footer={{ prompt: 'Already have an account?', linkLabel: 'Log in', href: '/login' }}>
+      <TextField
+        label="Username"
+        placeholder="gymrat99"
+        autoCapitalize="none"
+        autoComplete="username"
+        value={username}
+        onChangeText={setUsername}
+      />
+      <TextField
+        label="Email"
+        placeholder="you@example.com"
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        textContentType="emailAddress"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <TextField
+        label="Password"
+        placeholder="At least 6 characters"
+        secureTextEntry
+        autoComplete="new-password"
+        textContentType="newPassword"
+        value={password}
+        onChangeText={setPassword}
+        onSubmitEditing={handleSignup}
+      />
+      <Button title="Create account" variant="accent" icon="arrow-forward" loading={loading} onPress={handleSignup} />
+    </AuthShell>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: { flex: 1, justifyContent: 'center', gap: Spacing.five },
-  header: { gap: Spacing.two, alignItems: 'center' },
-  logo: { fontSize: 32, fontWeight: '800' },
-  subtitle: { fontSize: 15 },
-  form: { gap: Spacing.three },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-});

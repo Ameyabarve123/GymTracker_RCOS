@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { Spacing } from '@/constants/theme';
+import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = TextInputProps & {
@@ -20,27 +20,28 @@ export function TextField({ label, hint, style, onFocus, onBlur, onClear, clearL
       {label ? <Text style={[styles.label, { color: theme.textSecondary }]}>{label}</Text> : null}
       <View>
         <TextInput
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.input,
-          {
-            color: theme.text,
-            backgroundColor: theme.backgroundElement,
-            borderColor: focused ? theme.tint : theme.border,
-          },
-          style,
-          onClear ? styles.clearableInput : undefined,
-        ]}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        {...rest}
-      />
+          accessibilityLabel={rest.accessibilityLabel ?? label}
+          placeholderTextColor={theme.textSecondary}
+          style={[
+            styles.input,
+            {
+              color: theme.text,
+              backgroundColor: theme.backgroundElement,
+              borderColor: focused ? theme.text : 'transparent',
+            },
+            style,
+            onClear ? styles.clearableInput : undefined,
+          ]}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
+          {...rest}
+        />
         {onClear && !!rest.value && rest.editable !== false ? (
           <Pressable accessibilityRole="button" accessibilityLabel={clearLabel} style={styles.clearButton} onPress={onClear}>
             <Text style={[styles.clearText, { color: theme.textSecondary }]}>×</Text>
@@ -53,16 +54,18 @@ export function TextField({ label, hint, style, onFocus, onBlur, onClear, clearL
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: Spacing.two, alignSelf: 'stretch' },
-  label: { fontSize: 13, fontWeight: '600' },
+  wrapper: { gap: 6, alignSelf: 'stretch' },
+  label: { fontSize: 13, fontFamily: Font.semibold },
   input: {
-    borderWidth: 1,
-    borderRadius: 12,
+    minHeight: 50,
+    borderWidth: 1.5,
+    borderRadius: Radius.md,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three - 2,
+    paddingVertical: Spacing.two,
     fontSize: 16,
+    fontFamily: Font.medium,
   },
-  hint: { fontSize: 12 },
+  hint: { fontSize: 12, fontFamily: Font.medium },
   clearableInput: { paddingRight: 48 },
   clearButton: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 44, justifyContent: 'center', alignItems: 'center' },
   clearText: { fontSize: 26 },
