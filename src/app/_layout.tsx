@@ -52,6 +52,7 @@ function RootNavigator() {
       <Stack.Screen name="add-meal" options={{ presentation: 'modal', title: 'Log a Meal' }} />
       <Stack.Screen name="workout/[date]" options={{ title: 'Workout Details' }} />
       <Stack.Screen name="presets" options={{ title: 'Presets' }} />
+      <Stack.Screen name="saved-meals" options={{ title: 'Saved Meals' }} />
     </Stack>
   );
 }

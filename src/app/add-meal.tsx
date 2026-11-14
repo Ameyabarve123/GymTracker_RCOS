@@ -16,11 +16,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { confirmDeleteSavedMeal } from '@/components/saved-meal-row';
 import { Card } from '@/components/ui/card';
 import { CircleButton, GradientHeader } from '@/components/ui/gradient-header';
 import { TextField } from '@/components/ui/text-field';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { useAddMeal, useRecentMeals, useSavedMeals } from '@/hooks/use-nutrition';
+import { useAddMeal, useDeleteSavedMeal, useRecentMeals, useSavedMeals } from '@/hooks/use-nutrition';
 import { useTheme } from '@/hooks/use-theme';
 import { toDateKey } from '@/lib/date';
 import type { MealType } from '@/types/database';
@@ -38,20 +39,22 @@ export default function AddMealScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ type?: string }>();
+  // A saved meal opened from Saved Meals arrives pre-filled through these params.
+  const params = useLocalSearchParams<{ type?: string; name?: string; calories?: string; protein?: string; carbs?: string; fats?: string }>();
   const today = toDateKey();
 
   const addMeal = useAddMeal(today);
   const recent = useRecentMeals();
   const saved = useSavedMeals();
+  const deleteSaved = useDeleteSavedMeal();
 
   const initialType = MEAL_TYPES.some((m) => m.type === params.type) ? (params.type as MealType) : 'breakfast';
-  const [name, setName] = useState('');
+  const [name, setName] = useState(params.name ?? '');
   const [mealType, setMealType] = useState<MealType>(initialType);
-  const [calories, setCalories] = useState('');
-  const [protein, setProtein] = useState('');
-  const [carbs, setCarbs] = useState('');
-  const [fats, setFats] = useState('');
+  const [calories, setCalories] = useState(params.calories ?? '');
+  const [protein, setProtein] = useState(params.protein ?? '');
+  const [carbs, setCarbs] = useState(params.carbs ?? '');
+  const [fats, setFats] = useState(params.fats ?? '');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [source, setSource] = useState<'recent' | 'saved'>('recent');
@@ -63,6 +66,14 @@ export default function AddMealScreen() {
     setProtein(String(meal.protein));
     setCarbs(String(meal.carbs));
     setFats(String(meal.fats));
+  }
+
+  function confirmDeleteSaved(meal: QuickMeal) {
+    confirmDeleteSavedMeal(meal.name, () =>
+      deleteSaved.mutate(meal.id, {
+        onError: (err) => Alert.alert('Could not delete', err instanceof Error ? err.message : 'Something went wrong.'),
+      }),
+    );
   }
 
   async function pickPhoto() {
@@ -185,7 +196,8 @@ export default function AddMealScreen() {
                 {source === 'recent' ? 'Meals you log will show up here.' : 'Tick "Save to my meals" to keep a meal here.'}
               </Text>
             ) : (
-              quick.slice(0, 8).map((meal) => (
+              // Show every saved meal so each one can be managed; recent stays capped.
+              (source === 'saved' ? quick : quick.slice(0, 8)).map((meal) => (
                 <View key={`${source}-${meal.id}`} style={styles.quickRow}>
                   <View style={styles.flex}>
                     <Text style={[styles.quickName, { color: theme.text }]}>{meal.name}</Text>
@@ -193,6 +205,18 @@ export default function AddMealScreen() {
                       {meal.calories} kcal · P {meal.protein} · C {meal.carbs} · F {meal.fats}
                     </Text>
                   </View>
+                  {source === 'saved' ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete saved meal ${meal.name}`}
+                      accessibilityState={{ disabled: deleteSaved.isPending }}
+                      disabled={deleteSaved.isPending}
+                      hitSlop={6}
+                      onPress={() => confirmDeleteSaved(meal)}
+                      style={[styles.plus, { backgroundColor: theme.backgroundElement, opacity: deleteSaved.isPending ? 0.5 : 1 }]}>
+                      <Ionicons name="trash-outline" size={17} color={theme.danger} />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Use ${meal.name}`}

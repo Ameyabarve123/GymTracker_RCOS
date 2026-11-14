@@ -5,12 +5,13 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MacroBar } from '@/components/macro-bar';
+import { SavedMealRow } from '@/components/saved-meal-row';
 import { Card, Panel } from '@/components/ui/card';
 import { Chip, ChipRow, CircleButton, GradientHeader } from '@/components/ui/gradient-header';
 import { Screen } from '@/components/ui/screen';
 import { SectionTitle } from '@/components/ui/section-title';
-import { Font, Radius } from '@/constants/theme';
-import { useDailyLog, useDeleteMeal } from '@/hooks/use-nutrition';
+import { Font, Radius, Spacing } from '@/constants/theme';
+import { useDailyLog, useDeleteMeal, useSavedMeals } from '@/hooks/use-nutrition';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { toDateKey } from '@/lib/date';
@@ -69,7 +70,9 @@ export default function NutritionScreen() {
 
   return (
     <Screen header={header} tabBar refreshing={dailyLog.isRefetching} onRefresh={() => dailyLog.refetch()}>
-      <Panel>
+      <SavedMealsSection />
+
+      <Panel style={styles.macros}>
         <View style={styles.between}>
           <Text accessibilityRole="header" style={[styles.panelTitle, { color: theme.onInverse }]}>Your Macros</Text>
           <Pressable
@@ -158,6 +161,61 @@ export default function NutritionScreen() {
   );
 }
 
+/** Newest few saved meals, with a way into the full searchable list. Sits right under the header. */
+function SavedMealsSection() {
+  const theme = useTheme();
+  const router = useRouter();
+  const saved = useSavedMeals();
+  const savedList = saved.data ?? [];
+  return (
+    <>
+      <SectionTitle
+        title="Saved meals"
+        onPress={() => router.push('/saved-meals')}
+        actionLabel="See and search all saved meals"
+      />
+      <Card style={styles.savedCard}>
+        {savedList.length === 0 ? (
+          <Text style={[styles.itemMeta, { color: theme.textSecondary }]}>
+            {saved.isPending ? 'Loading…' : 'Tick "Save to my meals" when logging a meal to keep it here.'}
+          </Text>
+        ) : (
+          <>
+            {savedList.slice(0, 3).map((meal) => (
+              <SavedMealRow
+                key={meal.id}
+                meal={meal}
+                onLog={() =>
+                  router.push({
+                    pathname: '/add-meal',
+                    params: {
+                      type: meal.meal_type,
+                      name: meal.name,
+                      calories: String(meal.calories),
+                      protein: String(meal.protein),
+                      carbs: String(meal.carbs),
+                      fats: String(meal.fats),
+                    },
+                  })
+                }
+              />
+            ))}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/saved-meals')}
+              style={[styles.seeAll, { backgroundColor: theme.backgroundElement }]}>
+              <Ionicons name="search" size={16} color={theme.text} />
+              <Text style={[styles.addMoreText, { color: theme.text }]}>
+                {savedList.length > 3 ? `Search all ${savedList.length} saved meals` : 'Search saved meals'}
+              </Text>
+            </Pressable>
+          </>
+        )}
+      </Card>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   between: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -185,4 +243,15 @@ const styles = StyleSheet.create({
   iconButton: { width: 36, height: 36, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
   addMore: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, alignSelf: 'flex-start' },
   addMoreText: { fontSize: 13, fontFamily: Font.bold },
+  savedCard: { gap: 6 },
+  macros: { marginTop: Spacing.two },
+  seeAll: {
+    minHeight: 44,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
 });
