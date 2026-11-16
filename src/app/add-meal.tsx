@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -24,7 +25,15 @@ import { Font, Radius, Spacing } from '@/constants/theme';
 import { useAddMeal, useDeleteSavedMeal, useRecentMeals, useSavedMeals } from '@/hooks/use-nutrition';
 import { useTheme } from '@/hooks/use-theme';
 import { toDateKey } from '@/lib/date';
+import { parseNutritionLabel, type LabelField } from '@/lib/nutrition-label';
+import { recognizeText, textRecognitionAvailable } from '@/lib/text-recognition';
 import type { MealType } from '@/types/database';
+
+const LABEL_FIELDS: LabelField[] = ['calories', 'protein', 'carbs', 'fats'];
+
+function listWords(words: string[]) {
+  return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
 
 const MEAL_TYPES: { type: MealType; label: string }[] = [
   { type: 'breakfast', label: 'Breakfast' },
@@ -58,6 +67,8 @@ export default function AddMealScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [source, setSource] = useState<'recent' | 'saved'>('recent');
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
 
   function fill(meal: QuickMeal) {
     setName(meal.name);
@@ -79,6 +90,60 @@ export default function AddMealScreen() {
   async function pickPhoto() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
     if (!result.canceled) setPhotoUri(result.assets[0].uri);
+  }
+
+  function chooseLabelSource() {
+    if (!textRecognitionAvailable) {
+      Alert.alert(
+        'Update the app to scan labels',
+        'Label scanning needs the latest build of GymTracker (it is not available in Expo Go). Enter the values by hand for now.',
+      );
+      return;
+    }
+    Alert.alert('Scan nutrition label', 'Take a clear, straight-on photo of the Nutrition Facts panel.', [
+      { text: 'Take photo', onPress: () => scanLabel('camera') },
+      { text: 'Choose photo', onPress: () => scanLabel('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  async function scanLabel(from: 'camera' | 'library') {
+    try {
+      let picked: ImagePicker.ImagePickerResult;
+      if (from === 'camera') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Camera access needed', 'Allow camera access in Settings to scan labels, or choose a photo instead.');
+          return;
+        }
+        picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+      } else {
+        picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+      }
+      if (picked.canceled) return;
+
+      setScanning(true);
+      setScanNote(null);
+      const values = parseNutritionLabel(await recognizeText(picked.assets[0].uri));
+      const found = LABEL_FIELDS.filter((field) => values[field] !== undefined);
+      if (found.length === 0) {
+        setScanNote("Couldn't read any values from that photo. Try again closer, in good light, with the label flat.");
+        return;
+      }
+      if (values.calories !== undefined) setCalories(String(values.calories));
+      if (values.protein !== undefined) setProtein(String(values.protein));
+      if (values.carbs !== undefined) setCarbs(String(values.carbs));
+      if (values.fats !== undefined) setFats(String(values.fats));
+      const missing = LABEL_FIELDS.filter((field) => !found.includes(field));
+      setScanNote(
+        `Filled ${listWords(found)} for one serving. Check them before adding.` +
+          (missing.length ? ` Couldn't find ${listWords(missing)}.` : ''),
+      );
+    } catch (err) {
+      Alert.alert('Could not scan label', err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setScanning(false);
+    }
   }
 
   async function handleSave() {
@@ -144,6 +209,28 @@ export default function AddMealScreen() {
               )}
             </Pressable>
             <TextField label="Meal name" placeholder="e.g. Chicken rice bowl" value={name} onChangeText={setName} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Scan nutrition label"
+              accessibilityHint="Reads calories, protein, carbs and fats from a photo of the label"
+              accessibilityState={{ busy: scanning, disabled: scanning }}
+              disabled={scanning}
+              onPress={chooseLabelSource}
+              style={({ pressed }) => [styles.scan, { backgroundColor: theme.inverse, opacity: pressed ? 0.85 : 1 }]}>
+              {scanning ? (
+                <ActivityIndicator color={theme.onInverse} />
+              ) : (
+                <Ionicons name="scan-outline" size={20} color={theme.onInverse} />
+              )}
+              <Text style={[styles.scanText, { color: theme.onInverse }]}>
+                {scanning ? 'Reading label…' : 'Scan nutrition label'}
+              </Text>
+            </Pressable>
+            {scanNote ? (
+              <Text accessibilityLiveRegion="polite" style={[styles.scanNote, { color: theme.textSecondary }]}>
+                {scanNote}
+              </Text>
+            ) : null}
             <View style={styles.row}>
               <View style={styles.flex}>
                 <TextField label="Calories" placeholder="0" keyboardType="numeric" value={calories} onChangeText={setCalories} />
@@ -273,6 +360,17 @@ const styles = StyleSheet.create({
   photoText: { fontSize: 14, fontFamily: Font.semibold },
   photo: { width: '100%', height: 180, borderRadius: 18 },
   row: { flexDirection: 'row', gap: 10 },
+  scan: {
+    minHeight: 48,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.three,
+  },
+  scanText: { fontSize: 15, fontFamily: Font.bold },
+  scanNote: { fontSize: 13, fontFamily: Font.medium, lineHeight: 18 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   checkText: { fontSize: 14, fontFamily: Font.semibold },
   quickCard: { gap: 10 },

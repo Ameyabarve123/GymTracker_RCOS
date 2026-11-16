@@ -5,13 +5,30 @@ import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /** Large light section title with an optional round black arrow or a small trailing note. */
-export function SectionTitle({ title, note, onPress, actionLabel }: {
+export function SectionTitle({ title, note, onPress, actionLabel, wholeRow = false }: {
   title: string;
   note?: string;
   onPress?: () => void;
   actionLabel?: string;
+  /** Make the entire row (title included) trigger `onPress`, not just the arrow. Looks identical. */
+  wholeRow?: boolean;
 }) {
   const theme = useTheme();
+  if (wholeRow && onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={actionLabel ?? `Open ${title}`}
+        onPress={onPress}
+        style={styles.row}>
+        <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+        {note ? <Text style={[styles.note, { color: theme.textSecondary }]}>{note}</Text> : null}
+        <View style={[styles.arrow, { backgroundColor: theme.inverse }]}>
+          <Ionicons name="arrow-forward" size={18} color={theme.onInverse} style={styles.diagonal} />
+        </View>
+      </Pressable>
+    );
+  }
   return (
     <View style={styles.row}>
       <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>{title}</Text>

@@ -112,43 +112,49 @@ export default function HomeScreen() {
 
   return (
     <Screen header={header} tabBar refreshing={refreshing} onRefresh={onRefresh}>
-      <Card style={styles.todayCard}>
-        <View style={styles.todayRow}>
-          <Text style={[styles.date, { color: theme.text }]}>{format(now, 'd MMM').toUpperCase()}</Text>
-          {workouts[0] ? (
-            <View style={[styles.tag, { backgroundColor: theme.lavender }]}>
-              <Text numberOfLines={1} style={[styles.tagText, { color: theme.text }]}>{workouts[0].name}</Text>
+      {/* The whole card opens today's workout, same as its arrow tag. No style, so the look is unchanged. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={workouts.length ? "Open today's workout" : 'Start a workout'}
+        onPress={openWorkout}>
+        <Card style={styles.todayCard}>
+          <View style={styles.todayRow}>
+            <Text style={[styles.date, { color: theme.text }]}>{format(now, 'd MMM').toUpperCase()}</Text>
+            {workouts[0] ? (
+              <View style={[styles.tag, { backgroundColor: theme.lavender }]}>
+                <Text numberOfLines={1} style={[styles.tagText, { color: theme.text }]}>{workouts[0].name}</Text>
+              </View>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={workouts.length ? "Open today's workout" : 'Start a workout'}
+              onPress={openWorkout}
+              style={[styles.tag, styles.tagLink, { backgroundColor: theme.backgroundElement }]}>
+              <Ionicons name="barbell-outline" size={18} color={theme.text} />
+              <Text style={[styles.tagText, { color: theme.text }]}>
+                {workouts.length ? `${lifted.exercises} exercise${lifted.exercises === 1 ? '' : 's'}` : 'Start'}
+              </Text>
+              <Ionicons name="arrow-forward" size={16} color={theme.text} style={styles.diagonal} />
+            </Pressable>
+          </View>
+          <View style={styles.stats}>
+            <View style={styles.flex}>
+              <Text style={[styles.muted, { color: theme.textSecondary }]}>Calories</Text>
+              <Text style={[styles.bigStat, { color: theme.text }]}>
+                {Math.round(totals.calories).toLocaleString()}
+                <Text style={[styles.statUnit, { color: theme.textSecondary }]}> / {goals.calories.toLocaleString()}</Text>
+              </Text>
             </View>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={workouts.length ? "Open today's workout" : 'Start a workout'}
-            onPress={openWorkout}
-            style={[styles.tag, styles.tagLink, { backgroundColor: theme.backgroundElement }]}>
-            <Ionicons name="barbell-outline" size={18} color={theme.text} />
-            <Text style={[styles.tagText, { color: theme.text }]}>
-              {workouts.length ? `${lifted.exercises} exercise${lifted.exercises === 1 ? '' : 's'}` : 'Start'}
-            </Text>
-            <Ionicons name="arrow-forward" size={16} color={theme.text} style={styles.diagonal} />
-          </Pressable>
-        </View>
-        <View style={styles.stats}>
-          <View style={styles.flex}>
-            <Text style={[styles.muted, { color: theme.textSecondary }]}>Calories</Text>
-            <Text style={[styles.bigStat, { color: theme.text }]}>
-              {Math.round(totals.calories).toLocaleString()}
-              <Text style={[styles.statUnit, { color: theme.textSecondary }]}> / {goals.calories.toLocaleString()}</Text>
-            </Text>
+            <View style={styles.flex}>
+              <Text style={[styles.muted, { color: theme.textSecondary }]}>Volume lifted</Text>
+              <Text style={[styles.bigStat, { color: theme.text }]}>
+                {lifted.volume.toLocaleString()}
+                <Text style={[styles.statUnit, { color: theme.textSecondary }]}> lb</Text>
+              </Text>
+            </View>
           </View>
-          <View style={styles.flex}>
-            <Text style={[styles.muted, { color: theme.textSecondary }]}>Volume lifted</Text>
-            <Text style={[styles.bigStat, { color: theme.text }]}>
-              {lifted.volume.toLocaleString()}
-              <Text style={[styles.statUnit, { color: theme.textSecondary }]}> lb</Text>
-            </Text>
-          </View>
-        </View>
-      </Card>
+        </Card>
+      </Pressable>
 
       <Pressable
         accessibilityRole="button"
@@ -162,8 +168,13 @@ export default function HomeScreen() {
         <Ionicons name="arrow-forward" size={18} color={theme.onInverse} style={styles.diagonal} />
       </Pressable>
 
-      <SectionTitle title="Today's Macros" actionLabel="Open nutrition" onPress={() => router.navigate('/nutrition')} />
-      <View style={styles.macroGrid}>
+      <SectionTitle wholeRow title="Today's Macros" actionLabel="Open nutrition" onPress={() => router.navigate('/nutrition')} />
+      {/* Tapping any tile or the gauge opens Nutrition, same as the section arrow. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Today's macros: ${Math.round(totals.calories)} of ${goals.calories} calories. Open nutrition`}
+        onPress={() => router.navigate('/nutrition')}
+        style={styles.macroGrid}>
         <View style={styles.tileCol}>
           <MacroTile label="Protein" value={`${Math.round(totals.protein)}/${goals.protein}g`} />
           <MacroTile label="Carbs" value={`${Math.round(totals.carbs)}/${goals.carbs}g`} />
@@ -175,7 +186,7 @@ export default function HomeScreen() {
           <MacroTile label="Fats" value={`${Math.round(totals.fats)}/${goals.fats}g`} />
           <MacroTile label="Meals" value={`${dailyLog.data?.meals.length ?? 0} logged`} />
         </View>
-      </View>
+      </Pressable>
     </Screen>
   );
 }
