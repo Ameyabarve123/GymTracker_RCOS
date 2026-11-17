@@ -25,7 +25,7 @@ import { Font, Radius, Spacing } from '@/constants/theme';
 import { useAddMeal, useDeleteSavedMeal, useRecentMeals, useSavedMeals } from '@/hooks/use-nutrition';
 import { useTheme } from '@/hooks/use-theme';
 import { toDateKey } from '@/lib/date';
-import { parseNutritionLabel, type LabelField } from '@/lib/nutrition-label';
+import { parseNutritionLabel, readProductName, type LabelField } from '@/lib/nutrition-label';
 import { recognizeText, textRecognitionAvailable } from '@/lib/text-recognition';
 import type { MealType } from '@/types/database';
 
@@ -127,19 +127,25 @@ export default function AddMealScreen() {
 
       setScanning(true);
       setScanNote(null);
-      const values = parseNutritionLabel(await recognizeText(picked.assets[0].uri));
+      const text = await recognizeText(picked.assets[0].uri);
+      const values = parseNutritionLabel(text);
+      const productName = readProductName(text);
       const found = LABEL_FIELDS.filter((field) => values[field] !== undefined);
-      if (found.length === 0) {
+      // Only fill the name when the field is empty, so a name the user typed is never replaced.
+      const fillName = !!productName && !name.trim();
+      if (found.length === 0 && !fillName) {
         setScanNote("Couldn't read any values from that photo. Try again closer, in good light, with the label flat.");
         return;
       }
+      if (fillName) setName(productName);
       if (values.calories !== undefined) setCalories(String(values.calories));
       if (values.protein !== undefined) setProtein(String(values.protein));
       if (values.carbs !== undefined) setCarbs(String(values.carbs));
       if (values.fats !== undefined) setFats(String(values.fats));
       const missing = LABEL_FIELDS.filter((field) => !found.includes(field));
+      const filled = [...(fillName ? ['meal name'] : []), ...found];
       setScanNote(
-        `Filled ${listWords(found)} for one serving. Check them before adding.` +
+        `Filled ${listWords(filled)}${found.length ? ' for one serving' : ''}. Check them before adding.` +
           (missing.length ? ` Couldn't find ${listWords(missing)}.` : ''),
       );
     } catch (err) {

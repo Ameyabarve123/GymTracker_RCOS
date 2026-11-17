@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { parseNutritionLabel } = require('../src/lib/nutrition-label.ts');
+const { parseNutritionLabel, readProductName } = require('../src/lib/nutrition-label.ts');
 
 test('US Nutrition Facts as ML Kit blocks (multi-line strings)', () => {
   const blocks = [
@@ -39,4 +39,24 @@ test('amounts without units and a big calorie number in its own block (spinach l
     'Total Fat 0\nSaturated Fat 0\nTrans Fat 0\nCholesterol 0\nSodium 22mg\nTotal Carbohydrates 1g\nDietary Fiber 0\nTotal Sugars 0\nIncludes Added Sugars\nProtein 1g',
     'Vitamin D 0\nCalcium 28mg\nIron 1mg\nPotassium 158mg'];
   assert.deepEqual(parseNutritionLabel(blocks), { calories: 7, protein: 1, carbs: 1, fats: 0 });
+});
+
+test('product name: closest plausible line above the Nutrition Facts heading', () => {
+  // The spinach label as ML Kit may return it: separate blocks, or one block joining name and heading.
+  assert.equal(readProductName(['Chopped Baby Spinach', 'Nutrition Facts', 'Serving size OZ']), 'Chopped Baby Spinach');
+  assert.equal(readProductName(['Chopped Baby Spinach\nNutrition Facts']), 'Chopped Baby Spinach');
+  // Brand on top, product just above the heading: the product wins.
+  assert.equal(readProductName(['Fresh Express', 'Organic Kale Salad Kit', 'Nutrition Facts']), 'Organic Kale Salad Kit');
+});
+
+test('product name: tidies ALL CAPS and skips panel text above the heading', () => {
+  assert.equal(readProductName(['GREEK YOGURT, PLAIN', 'Nutritlon Facts']), 'Greek Yogurt, Plain');
+  assert.equal(readProductName(['Peanut Butter', '8 servings per container', 'NET WT 16 OZ (454g)', 'Nutrition Facts']), 'Peanut Butter');
+  assert.equal(readProductName(['Whole Wheat Bread', 'Typical values per 100g', 'Nutrition Information']), 'Whole Wheat Bread');
+});
+
+test('product name: no guess without a heading or a plausible line', () => {
+  assert.equal(readProductName(['Calories 230', 'Total Fat 8g']), undefined);
+  assert.equal(readProductName(['Nutrition Facts', 'Calories 230']), undefined);
+  assert.equal(readProductName(['12345 67', '% Daily Value', 'Nutrition Facts']), undefined);
 });

@@ -13,14 +13,6 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
  */
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-if (!isSupabaseConfigured) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    'Supabase is not configured. Create a .env file with EXPO_PUBLIC_SUPABASE_URL and ' +
-      'EXPO_PUBLIC_SUPABASE_ANON_KEY (see .env.example).'
-  );
-}
-
 export const supabase = createClient(
   supabaseUrl ?? 'https://placeholder.supabase.co',
   supabaseAnonKey ?? 'public-anon-key-placeholder',

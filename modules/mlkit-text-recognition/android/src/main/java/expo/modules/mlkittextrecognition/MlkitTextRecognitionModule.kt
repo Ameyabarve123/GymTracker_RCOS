@@ -3,7 +3,6 @@ package expo.modules.mlkittextrecognition
 import android.graphics.BitmapFactory
 import android.media.ExifInterface
 import android.net.Uri
-import android.util.Log
 import com.google.mlkit.common.sdkinternal.MlKitContext
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -17,8 +16,6 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-
-private const val TAG = "MlkitTextRecognition"
 
 /** Longest side we decode to. Label text stays well above ML Kit's 16px-per-character minimum. */
 private const val MAX_SIDE = 2048
@@ -35,12 +32,12 @@ class RecognitionException(cause: Throwable) :
  * The image is decoded here and passed to ML Kit with InputImage.fromBitmap, so ML Kit never has
  * to open file paths itself. Accepts file:// URIs, plain paths and content:// URIs, in any format
  * Android can decode (JPEG, PNG, WebP, HEIC on Android 9+).
+ *
+ * Release builds depend on the keep rules in ../proguard-rules.pro: without them R8 strips ML Kit's
+ * reflectively-created component registrars and the first scan crashes with a null-pointer error.
  */
 class MlkitTextRecognitionModule : Module() {
   private var recognizer: TextRecognizer? = null
-
-  /** Breadcrumb so logcat shows exactly how far a scan got before any failure. */
-  private fun step(message: String) = Log.i(TAG, "step: $message")
 
   override fun definition() = ModuleDefinition {
     Name("MlkitTextRecognition")
@@ -49,19 +46,11 @@ class MlkitTextRecognitionModule : Module() {
 
     // Resolves with ML Kit's text blocks; each block can contain several lines separated by "\n".
     AsyncFunction("recognizeAsync") { uri: String, promise: Promise ->
-      step("start $uri")
-
-      // ML Kit normally self-initializes through a manifest ContentProvider (MlKitInitProvider).
-      // Initializing explicitly is idempotent and guards against that provider being missing.
-      val appCtx = appContext.reactContext?.applicationContext
-      step(if (appCtx == null) "reactContext is NULL (ML Kit init skipped)" else "reactContext ok")
+      // ML Kit normally initializes itself through its manifest ContentProvider; doing it here too
+      // is idempotent and protects against that provider being unavailable.
       try {
-        if (appCtx != null) {
-          MlKitContext.initializeIfNeeded(appCtx)
-          step("ML Kit init ok")
-        }
+        appContext.reactContext?.applicationContext?.let { MlKitContext.initializeIfNeeded(it) }
       } catch (error: Throwable) {
-        Log.e(TAG, "ML Kit initialization failed", error)
         promise.reject(RecognitionException(error))
         return@AsyncFunction
       }
@@ -69,29 +58,20 @@ class MlkitTextRecognitionModule : Module() {
       val image = try {
         loadImage(uri)
       } catch (error: Throwable) {
-        // Log the full stack so logcat shows the exact failing line, not just the message.
-        Log.e(TAG, "Failed to read image: $uri", error)
         promise.reject(ImageReadException(uri, error))
         return@AsyncFunction
       }
-      step("InputImage ready ${image.width}x${image.height} rotation=${image.rotationDegrees}")
 
       val client = try {
         recognizer ?: TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).also { recognizer = it }
       } catch (error: Throwable) {
-        Log.e(TAG, "Failed to create ML Kit recognizer", error)
         promise.reject(RecognitionException(error))
         return@AsyncFunction
       }
-      step("recognizer ready; processing")
 
       client.process(image)
-        .addOnSuccessListener { text ->
-          step("done: ${text.textBlocks.size} text blocks")
-          promise.resolve(text.textBlocks.map { it.text })
-        }
+        .addOnSuccessListener { text -> promise.resolve(text.textBlocks.map { it.text }) }
         .addOnFailureListener { error ->
-          Log.e(TAG, "ML Kit recognition failed", error)
           promise.reject(RecognitionException(error))
         }
     }
@@ -118,26 +98,18 @@ class MlkitTextRecognitionModule : Module() {
 
   private fun loadImage(uri: String): InputImage {
     // Read the size first, so huge camera photos are downsampled instead of filling memory.
-    step("reading image bounds")
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     open(uri).use { BitmapFactory.decodeStream(it, null, bounds) }
-    step("bounds ${bounds.outWidth}x${bounds.outHeight} mime=${bounds.outMimeType}")
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Unsupported or damaged image file")
 
     var sampleSize = 1
     while (maxOf(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= MAX_SIDE) sampleSize *= 2
 
-    step("decoding bitmap sampleSize=$sampleSize")
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
     val bitmap = open(uri).use { BitmapFactory.decodeStream(it, null, options) }
       ?: throw IOException("Android could not decode this image")
-    step("bitmap ${bitmap.width}x${bitmap.height} config=${bitmap.config}")
 
-    val rotation = open(uri).use { rotationOf(it) }
-    step("rotation=$rotation; creating InputImage")
-    val image = InputImage.fromBitmap(bitmap, rotation)
-    step("InputImage created")
-    return image
+    return InputImage.fromBitmap(bitmap, open(uri).use { rotationOf(it) })
   }
 
   /** Camera photos are often stored sideways with an EXIF rotation flag; ML Kit needs upright text. */

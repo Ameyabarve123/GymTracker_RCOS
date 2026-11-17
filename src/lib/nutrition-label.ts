@@ -80,6 +80,39 @@ function readCalories(lines: string[]): number | undefined {
   return undefined;
 }
 
+/** The panel heading, tolerating OCR slips such as "Nutritlon Facts" or "NUTRITION INFORMATION". */
+const PANEL_HEADING = /\bnutri\w*\s+(?:facts?|info\w*)\b/i;
+
+/** Lines above the heading that are panel text, not a product name. */
+const NOT_A_NAME = /serving|container|amount|calorie|daily value|ingredient|net\s*wt|net weight|per\s+100|typical values|%/i;
+
+/** "CHOPPED BABY SPINACH" -> "Chopped Baby Spinach"; mixed-case names are left as printed. */
+function tidyName(line: string): string {
+  const text = line.replace(/\s+/g, ' ').replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N})]+$/gu, '').trim();
+  if (text !== text.toUpperCase()) return text;
+  return text.toLowerCase().replace(/(^|[\s\-/(])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+/**
+ * Best guess at the product name: the closest plausible line printed above the
+ * "Nutrition Facts" heading (where many labels and photos show it). Returns undefined when
+ * there is no heading or nothing above it looks like a name, rather than guessing.
+ */
+export function readProductName(texts: readonly string[]): string | undefined {
+  const lines = texts.flatMap((t) => t.split(/\r?\n/)).map((l) => l.trim()).filter(Boolean);
+  const heading = lines.findIndex((line) => PANEL_HEADING.test(line));
+  if (heading <= 0) return undefined;
+
+  for (let i = heading - 1; i >= 0; i--) {
+    const line = lines[i];
+    const letters = line.match(/\p{L}/gu)?.length ?? 0;
+    const digits = line.match(/\d/g)?.length ?? 0;
+    if (NOT_A_NAME.test(line) || letters < 3 || digits > letters / 2 || line.length > 60) continue;
+    return tidyName(line);
+  }
+  return undefined;
+}
+
 export function parseNutritionLabel(texts: readonly string[]): LabelValues {
   const lines = texts.flatMap((t) => t.split(/\r?\n/)).map(clean).filter(Boolean);
   const values: LabelValues = {};

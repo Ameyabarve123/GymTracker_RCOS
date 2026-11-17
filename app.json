@@ -41,7 +41,9 @@
           "photosPermission": "GymTracker needs access to your photos to attach meal images.",
           "cameraPermission": "GymTracker needs access to your camera to photograph meals."
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
