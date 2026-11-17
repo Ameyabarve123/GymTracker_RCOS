@@ -108,6 +108,9 @@ export default function AddMealScreen() {
   }
 
   async function scanLabel(from: 'camera' | 'library') {
+    // Below 1 so Android re-encodes the pick into a standard JPEG/PNG (at 1 it copies the original
+    // bytes, e.g. HEIC, under a .jpeg name). 0.9 keeps label text sharp.
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.9 };
     try {
       let picked: ImagePicker.ImagePickerResult;
       if (from === 'camera') {
@@ -116,9 +119,9 @@ export default function AddMealScreen() {
           Alert.alert('Camera access needed', 'Allow camera access in Settings to scan labels, or choose a photo instead.');
           return;
         }
-        picked = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+        picked = await ImagePicker.launchCameraAsync(options);
       } else {
-        picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+        picked = await ImagePicker.launchImageLibraryAsync(options);
       }
       if (picked.canceled) return;
 
@@ -140,7 +143,13 @@ export default function AddMealScreen() {
           (missing.length ? ` Couldn't find ${listWords(missing)}.` : ''),
       );
     } catch (err) {
-      Alert.alert('Could not scan label', err instanceof Error ? err.message : 'Something went wrong.');
+      // Friendly first; the technical detail stays visible to help with bug reports.
+      Alert.alert(
+        'Could not scan label',
+        `That photo couldn't be read. Try taking a new photo of the label instead.${
+          err instanceof Error ? `\n\nDetails: ${err.message}` : ''
+        }`,
+      );
     } finally {
       setScanning(false);
     }

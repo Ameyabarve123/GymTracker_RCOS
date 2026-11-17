@@ -33,3 +33,10 @@ test('unreadable text returns nothing rather than guesses', () => {
   assert.deepEqual(parseNutritionLabel(['Best before 12/2026', 'Store in a cool dry place']), {});
   assert.deepEqual(parseNutritionLabel([]), {});
 });
+
+test('amounts without units and a big calorie number in its own block (spinach label)', () => {
+  const blocks = ['Chopped Baby Spinach', 'Nutrition Facts', 'Serving size OZ', 'Amount Per Serving\nCalories', '7', '% Daily Value*',
+    'Total Fat 0\nSaturated Fat 0\nTrans Fat 0\nCholesterol 0\nSodium 22mg\nTotal Carbohydrates 1g\nDietary Fiber 0\nTotal Sugars 0\nIncludes Added Sugars\nProtein 1g',
+    'Vitamin D 0\nCalcium 28mg\nIron 1mg\nPotassium 158mg'];
+  assert.deepEqual(parseNutritionLabel(blocks), { calories: 7, protein: 1, carbs: 1, fats: 0 });
+});

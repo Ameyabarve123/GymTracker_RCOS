@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.mlkittextrecognition'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.mlkittextrecognition"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+    // Bundled into the app's R8 run so crash traces keep real class names (see proguard-rules.pro).
+    consumerProguardFiles 'proguard-rules.pro'
+  }
+}
+
+dependencies {
+  // Official Google ML Kit text recognition v2, Latin script, BUNDLED model:
+  // the model ships inside the APK, works offline, and needs no Google Play services download.
+  // https://developers.google.com/ml-kit/vision/text-recognition/v2/android
+  implementation 'com.google.mlkit:text-recognition:16.0.1'
+}
