@@ -109,14 +109,15 @@ export function useAddMeal(dateKey: string) {
       if (error) throw error;
 
       if (saveAsTemplate) {
+        // Saved meals are not tied to a section; you pick breakfast/lunch/… when logging one.
         await supabase.from('saved_meals').insert({
           user_id: userId!,
           name: mealFields.name,
-          meal_type: mealFields.meal_type,
           calories: mealFields.calories,
           protein: mealFields.protein,
           carbs: mealFields.carbs,
           fats: mealFields.fats,
+          photo_url: mealFields.photo_url ?? null,
         });
       }
 
@@ -128,6 +129,29 @@ export function useAddMeal(dateKey: string) {
       qc.invalidateQueries({ queryKey: ['daily-log', userId, dateKey] });
       qc.invalidateQueries({ queryKey: ['profile', userId] });
       qc.invalidateQueries({ queryKey: ['saved-meals', userId] });
+      qc.invalidateQueries({ queryKey: ['recent-meals', userId] });
+    },
+  });
+}
+
+/** Edits an already-logged meal in place — used to move it to another section, or change its values. */
+export function useUpdateMeal(dateKey: string) {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: Partial<Pick<Meal, 'meal_type' | 'name' | 'calories' | 'protein' | 'carbs' | 'fats' | 'photo_url'>>;
+    }) => {
+      const { error } = await supabase.from('meals').update(patch).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['daily-log', userId, dateKey] });
       qc.invalidateQueries({ queryKey: ['recent-meals', userId] });
     },
   });
@@ -174,10 +198,13 @@ export function useRecentMeals() {
     queryKey: ['recent-meals', userId],
     enabled: !!userId,
     queryFn: async (): Promise<Meal[]> => {
+      // Only meals logged in the last 24 hours, so stale entries drop off after a day.
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('meals')
         .select('*')
         .eq('user_id', userId!)
+        .gte('logged_at', since)
         .order('logged_at', { ascending: false })
         .limit(30);
       if (error) throw error;
@@ -193,6 +220,40 @@ export function useRecentMeals() {
       }
       return unique;
     },
+  });
+}
+
+/** Creates a saved-meal template directly (not logged to any day). */
+export function useCreateSavedMeal() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (meal: { name: string; calories: number; protein: number; carbs: number; fats: number; photo_url: string | null }) => {
+      const { error } = await supabase.from('saved_meals').insert({ user_id: userId!, ...meal });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['saved-meals', userId] }),
+  });
+}
+
+/** Edits a saved meal's name or macros in place. */
+export function useUpdateSavedMeal() {
+  const { userId } = useAuth();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: Partial<Pick<SavedMeal, 'name' | 'calories' | 'protein' | 'carbs' | 'fats' | 'photo_url'>>;
+    }) => {
+      const { error } = await supabase.from('saved_meals').update(patch).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['saved-meals', userId] }),
   });
 }
 

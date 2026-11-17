@@ -43,15 +43,16 @@ export interface Meal {
   logged_at: string;
 }
 
+/** A reusable meal the user saved. Not tied to a section — the section is chosen when logging it. */
 export interface SavedMeal {
   id: string;
   user_id: string;
   name: string;
-  meal_type: MealType;
   calories: number;
   protein: number;
   carbs: number;
   fats: number;
+  photo_url: string | null;
   created_at: string;
 }
 
@@ -186,7 +187,7 @@ export interface Database {
       };
       saved_meals: {
         Row: SavedMeal;
-        Insert: Insertable<SavedMeal, 'id' | 'created_at'>;
+        Insert: Insertable<SavedMeal, 'id' | 'created_at' | 'photo_url'>;
         Update: Partial<SavedMeal>;
       };
       exercises: {

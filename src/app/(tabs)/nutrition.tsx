@@ -5,17 +5,26 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MacroBar } from '@/components/macro-bar';
-import { SavedMealRow } from '@/components/saved-meal-row';
+import { MealDetailModal, type MealEdits } from '@/components/meal-detail';
+import { SavedMealDetailModal, type SavedMealEdits } from '@/components/saved-meal-detail';
+import { confirmDeleteSavedMeal, SavedMealRow } from '@/components/saved-meal-row';
 import { Card, Panel } from '@/components/ui/card';
 import { Chip, ChipRow, CircleButton, GradientHeader } from '@/components/ui/gradient-header';
 import { Screen } from '@/components/ui/screen';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { useDailyLog, useDeleteMeal, useSavedMeals } from '@/hooks/use-nutrition';
+import {
+  useDailyLog,
+  useDeleteMeal,
+  useDeleteSavedMeal,
+  useSavedMeals,
+  useUpdateMeal,
+  useUpdateSavedMeal,
+} from '@/hooks/use-nutrition';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { toDateKey } from '@/lib/date';
-import type { Meal, MealType } from '@/types/database';
+import type { Meal, MealType, SavedMeal } from '@/types/database';
 
 const GROUPS: { type: MealType; label: string }[] = [
   { type: 'breakfast', label: 'Breakfast' },
@@ -32,7 +41,9 @@ export default function NutritionScreen() {
   const profile = useProfile();
   const dailyLog = useDailyLog(today);
   const deleteMeal = useDeleteMeal(today);
+  const updateMeal = useUpdateMeal(today);
   const [open, setOpen] = useState<Partial<Record<MealType, boolean>>>({});
+  const [selected, setSelected] = useState<Meal | null>(null);
 
   const totals = dailyLog.data?.totals ?? { calories: 0, protein: 0, carbs: 0, fats: 0 };
   const meals = dailyLog.data?.meals ?? [];
@@ -50,6 +61,22 @@ export default function NutritionScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => deleteMeal.mutate(meal.id) },
     ]);
+  }
+
+  function changeSection(type: MealType) {
+    if (!selected) return;
+    updateMeal.mutate({ id: selected.id, patch: { meal_type: type } }, { onSuccess: () => setSelected(null) });
+  }
+
+  function saveEdits(edits: MealEdits) {
+    if (!selected) return;
+    updateMeal.mutate(
+      { id: selected.id, patch: edits },
+      {
+        onSuccess: () => setSelected(null),
+        onError: (err) => Alert.alert('Could not save', err instanceof Error ? err.message : 'Something went wrong.'),
+      },
+    );
   }
 
   const header = (
@@ -128,12 +155,16 @@ export default function NutritionScreen() {
                 <View style={styles.items}>
                   {items.map((meal) => (
                     <View key={meal.id} style={styles.item}>
-                      <View style={styles.flex}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${meal.name}, ${meal.calories} kcal. View details`}
+                        onPress={() => setSelected(meal)}
+                        style={styles.flex}>
                         <Text style={[styles.itemName, { color: theme.text }]}>{meal.name}</Text>
                         <Text style={[styles.itemMeta, { color: theme.textSecondary }]}>
                           {meal.calories} kcal · P {meal.protein} · C {meal.carbs} · F {meal.fats}
                         </Text>
-                      </View>
+                      </Pressable>
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`Delete ${meal.name}`}
@@ -157,6 +188,19 @@ export default function NutritionScreen() {
           );
         })}
       </Card>
+
+      <MealDetailModal
+        meal={selected}
+        busy={updateMeal.isPending}
+        onChangeSection={changeSection}
+        onSave={saveEdits}
+        onDelete={() => {
+          const meal = selected;
+          setSelected(null);
+          if (meal) confirmDelete(meal);
+        }}
+        onClose={() => setSelected(null)}
+      />
     </Screen>
   );
 }
@@ -166,7 +210,35 @@ function SavedMealsSection() {
   const theme = useTheme();
   const router = useRouter();
   const saved = useSavedMeals();
+  const updateSaved = useUpdateSavedMeal();
+  const deleteSaved = useDeleteSavedMeal();
   const savedList = saved.data ?? [];
+  const [selected, setSelected] = useState<SavedMeal | null>(null);
+
+  const logSaved = (meal: SavedMeal) =>
+    router.push({
+      pathname: '/add-meal',
+      params: {
+        name: meal.name,
+        calories: String(meal.calories),
+        protein: String(meal.protein),
+        carbs: String(meal.carbs),
+        fats: String(meal.fats),
+        ...(meal.photo_url ? { photo: meal.photo_url } : {}),
+      },
+    });
+
+  function saveEdits(edits: SavedMealEdits) {
+    if (!selected) return;
+    updateSaved.mutate(
+      { id: selected.id, patch: edits },
+      {
+        onSuccess: () => setSelected(null),
+        onError: (err) => Alert.alert('Could not save', err instanceof Error ? err.message : 'Something went wrong.'),
+      },
+    );
+  }
+
   return (
     <>
       <SectionTitle
@@ -181,24 +253,9 @@ function SavedMealsSection() {
           </Text>
         ) : (
           <>
-            {savedList.slice(0, 3).map((meal) => (
-              <SavedMealRow
-                key={meal.id}
-                meal={meal}
-                onLog={() =>
-                  router.push({
-                    pathname: '/add-meal',
-                    params: {
-                      type: meal.meal_type,
-                      name: meal.name,
-                      calories: String(meal.calories),
-                      protein: String(meal.protein),
-                      carbs: String(meal.carbs),
-                      fats: String(meal.fats),
-                    },
-                  })
-                }
-              />
+            {/* Only the most recent saved meal; the rest live on the Saved Meals screen. */}
+            {savedList.slice(0, 1).map((meal) => (
+              <SavedMealRow key={meal.id} meal={meal} onPress={() => setSelected(meal)} onLog={() => logSaved(meal)} />
             ))}
             <Pressable
               accessibilityRole="button"
@@ -206,12 +263,35 @@ function SavedMealsSection() {
               style={[styles.seeAll, { backgroundColor: theme.backgroundElement }]}>
               <Ionicons name="search" size={16} color={theme.text} />
               <Text style={[styles.addMoreText, { color: theme.text }]}>
-                {savedList.length > 3 ? `Search all ${savedList.length} saved meals` : 'Search saved meals'}
+                {savedList.length > 1 ? `See all ${savedList.length} saved meals` : 'Search saved meals'}
               </Text>
             </Pressable>
           </>
         )}
       </Card>
+
+      <SavedMealDetailModal
+        meal={selected}
+        busy={updateSaved.isPending}
+        onSave={saveEdits}
+        onLog={() => {
+          const meal = selected;
+          setSelected(null);
+          if (meal) logSaved(meal);
+        }}
+        onDelete={() => {
+          const meal = selected;
+          setSelected(null);
+          if (meal) {
+            confirmDeleteSavedMeal(meal.name, () =>
+              deleteSaved.mutate(meal.id, {
+                onError: (err) => Alert.alert('Could not delete', err instanceof Error ? err.message : 'Something went wrong.'),
+              }),
+            );
+          }
+        }}
+        onClose={() => setSelected(null)}
+      />
     </>
   );
 }

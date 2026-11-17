@@ -3,9 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Font, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { MealType, SavedMeal } from '@/types/database';
-
-const TYPE_LABELS: Record<MealType, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' };
+import type { SavedMeal } from '@/types/database';
 
 /** Asks before deleting; logged meals made from the template are unaffected. */
 export function confirmDeleteSavedMeal(name: string, onConfirm: () => void) {
@@ -15,28 +13,38 @@ export function confirmDeleteSavedMeal(name: string, onConfirm: () => void) {
   ]);
 }
 
-export function SavedMealRow({ meal, onLog, onDelete, deleting }: {
+export function SavedMealRow({ meal, onLog, onDelete, onPress, deleting }: {
   meal: SavedMeal;
   onLog: () => void;
   onDelete?: () => void;
+  /** Tapping the name/macros opens details; without it that area is static. */
+  onPress?: () => void;
   deleting?: boolean;
 }) {
   const theme = useTheme();
-  const tone = { breakfast: theme.peach, lunch: theme.mint, dinner: theme.lavender, snack: theme.yellow }[meal.meal_type];
+
+  const info = (
+    <View style={styles.flex}>
+      <Text numberOfLines={1} style={[styles.name, { color: theme.text }]}>{meal.name}</Text>
+      <Text style={[styles.meta, { color: theme.textSecondary }]}>
+        {meal.calories} kcal · P {meal.protein} · C {meal.carbs} · F {meal.fats}
+      </Text>
+    </View>
+  );
 
   return (
     <View style={styles.row}>
-      <View style={styles.flex}>
-        <View style={styles.titleRow}>
-          <Text numberOfLines={1} style={[styles.name, { color: theme.text }]}>{meal.name}</Text>
-          <View style={[styles.pill, { backgroundColor: tone }]}>
-            <Text style={[styles.pillText, { color: theme.onAccent }]}>{TYPE_LABELS[meal.meal_type]}</Text>
-          </View>
-        </View>
-        <Text style={[styles.meta, { color: theme.textSecondary }]}>
-          {meal.calories} kcal · P {meal.protein} · C {meal.carbs} · F {meal.fats}
-        </Text>
-      </View>
+      {onPress ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${meal.name}, ${meal.calories} kcal. View details`}
+          onPress={onPress}
+          style={styles.flex}>
+          {info}
+        </Pressable>
+      ) : (
+        info
+      )}
       {onDelete ? (
         <Pressable
           accessibilityRole="button"
@@ -63,10 +71,7 @@ export function SavedMealRow({ meal, onLog, onDelete, deleting }: {
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { flexShrink: 1, fontSize: 15, fontFamily: Font.semibold },
-  pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.pill },
-  pillText: { fontSize: 11, fontFamily: Font.bold },
+  name: { fontSize: 15, fontFamily: Font.semibold },
   meta: { fontSize: 13, fontFamily: Font.medium },
   icon: { width: 40, height: 40, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
 });

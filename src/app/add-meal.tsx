@@ -42,14 +42,15 @@ const MEAL_TYPES: { type: MealType; label: string }[] = [
   { type: 'snack', label: 'Snack' },
 ];
 
-type QuickMeal = { id: string; name: string; meal_type: MealType; calories: number; protein: number; carbs: number; fats: number };
+// meal_type is only present on recent (logged) meals; saved meals are not tied to a section.
+type QuickMeal = { id: string; name: string; meal_type?: MealType; calories: number; protein: number; carbs: number; fats: number };
 
 export default function AddMealScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // A saved meal opened from Saved Meals arrives pre-filled through these params.
-  const params = useLocalSearchParams<{ type?: string; name?: string; calories?: string; protein?: string; carbs?: string; fats?: string }>();
+  const params = useLocalSearchParams<{ type?: string; name?: string; calories?: string; protein?: string; carbs?: string; fats?: string; photo?: string }>();
   const today = toDateKey();
 
   const addMeal = useAddMeal(today);
@@ -64,7 +65,7 @@ export default function AddMealScreen() {
   const [protein, setProtein] = useState(params.protein ?? '');
   const [carbs, setCarbs] = useState(params.carbs ?? '');
   const [fats, setFats] = useState(params.fats ?? '');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(params.photo ?? null);
   const [saveTemplate, setSaveTemplate] = useState(false);
   const [source, setSource] = useState<'recent' | 'saved'>('recent');
   const [scanning, setScanning] = useState(false);
@@ -72,7 +73,7 @@ export default function AddMealScreen() {
 
   function fill(meal: QuickMeal) {
     setName(meal.name);
-    setMealType(meal.meal_type);
+    if (meal.meal_type) setMealType(meal.meal_type);
     setCalories(String(meal.calories));
     setProtein(String(meal.protein));
     setCarbs(String(meal.carbs));
